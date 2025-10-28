@@ -1,6 +1,6 @@
 # 🖌️  Módulo: Aplicación Automática de Tema e Iconos GTK
 
-![Made for Debian](https://img.shields.io/badge/Made%20for-Debian-white?logo=debian) ![Hyprland version](https://img.shields.io/badge/Hyprland-0.41.2-white?logo=hyprland)
+![Made for ArchLinux](https://img.shields.io/badge/Made%20for-Arch-white?logo=archlinux) ![Hyprland version](https://img.shields.io/badge/Hyprland-0.51.1-white?logo=hyprland)
 
 
 
