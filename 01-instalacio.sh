@@ -1,16 +1,57 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-echo "== Instalación Wayland + NVIDIA + Hyprland en Arch Linux =="
+# ===== Colores =====
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+BLUE='\033[0;34m'
+YELLOW='\033[1;33m'
+NC='\033[0m'
+
+# ===== Variables =====
+TARGET_USER="${SUDO_USER:-$USER}"
+USER_HOME=$(eval echo "~$TARGET_USER")
+
+# ===== Funciones =====
+log_error() {
+  echo -e "${RED}"
+  echo "=========================================="
+  echo -e "!!! Ha ocurrido un fallo en el script. Saliendo... !!!"
+  echo "=========================================="
+  echo -e "${NC}"
+  exit 1
+}
+log_success() {
+  echo -e "${GREEN}"
+  echo "=========================================="
+  echo -e "=== $1 ==="
+  echo "=========================================="
+  echo -e "${NC}"
+}
+log_info() {
+  echo -e "${YELLOW}"
+  echo "=========================================="
+  echo -e "--- $1 ---"
+  echo "=========================================="
+  echo -e "${NC}"
+}
+pac_install(){
+  pacman -S --noconfirm "$@"
+}
+pac_upgrade(){
+  pacman -Syu --noconfirm
+}
+
+log_info "== Instalación Wayland + NVIDIA + Hyprland en Arch Linux =="
 
 # Verifica que lo estás ejecutando como root
 if [ "$(id -u)" -ne 0 ]; then
-  echo "Por favor, ejecuta este script como root o con sudo."
+  log_success "Por favor, ejecuta este script como root o con sudo."
   exit 1
 fi
 
 ### Paso 0: Detección automática del kernel y headers
-echo "== Detectando kernel actual =="
+log_info "== Detectando kernel actual =="
 
 # Ejemplo de uname -r: 6.11.4-arch1-1 → base = "linux"
 KERNEL_VERSION=$(uname -r)
@@ -26,43 +67,48 @@ fi
 
 KERNEL_HEADERS_PKG="${KERNEL_BASE}-headers"
 
-echo "Kernel detectado: $KERNEL_VERSION"
-echo "Paquete de headers correspondiente: $KERNEL_HEADERS_PKG"
+log_success "Kernel detectado: $KERNEL_VERSION"
+log_success "Paquete de headers correspondiente: $KERNEL_HEADERS_PKG"
 
 ### Paso 1: Actualizar sistema base
-echo "== Paso 1: Actualizando sistema =="
-pacman -Syu --noconfirm
+log_success "== Paso 1: Actualizando sistema =="
+pac_upgrade
 
 ### Paso 2: Instalar headers del kernel
-echo "== Paso 2: Instalando headers del kernel ($KERNEL_HEADERS_PKG) =="
-pacman -S --noconfirm ${KERNEL_HEADERS_PKG}
+log_success "== Paso 2: Instalando headers del kernel ($KERNEL_HEADERS_PKG) =="
+pac_install ${KERNEL_HEADERS_PKG}
 
 ### Paso 3: Instalar Wayland y componentes básicos
 echo "== Paso 3: Instalando Wayland y componentes =="
-pacman -S --noconfirm \
-    wayland \
-    xorg-xwayland \
-    wlroots \
-    polkit \
-    seatd
+pkgs=(
+  wayland
+  xorg-xwayland
+  wlroots
+  polkit
+  seatd
+)
+pac_install "${pkgs[@]}"
 
 ### Paso 4: Instalar drivers propietarios NVIDIA
-echo "== Paso 4: Instalando controladores NVIDIA =="
-pacman -S --noconfirm \
-    nvidia \
-    nvidia-utils \
-    lib32-nvidia-utils \
-    nvidia-settings
+log_success "== Paso 4: Instalando controladores NVIDIA =="
+pkgs=(
+  nvidia
+  nvidia-utils
+  lib32-nvidia-utils
+  nvidia-settings
+  nvidia-smi
+)
+pac_install "${pkgs[@]}"
 
 ### Paso 5: Configurar KMS (Kernel Mode Setting) para NVIDIA
-echo "== Paso 5: Configurando NVIDIA KMS =="
+log_success "== Paso 5: Configurando NVIDIA KMS =="
 cat <<EOF > /etc/modprobe.d/nvidia-kms.conf
 options nvidia_drm modeset=1
 options nvidia_drm fbdev=1
 EOF
 
 ### Paso 6: Añadir módulos NVIDIA al initramfs
-echo "== Paso 6: Añadiendo módulos NVIDIA al initramfs =="
+log_success "== Paso 6: Añadiendo módulos NVIDIA al initramfs =="
 sed -i 's/^MODULES=(\(.*\))/MODULES=(\1 nvidia nvidia_modeset nvidia_uvm
 nvidia_drm)/' /etc/mkinitcpio.conf
 
@@ -71,78 +117,35 @@ echo "== Paso 7: Regenerando initramfs =="
 mkinitcpio -P
 
 ### Paso 8: Instalar PipeWire (reemplazo moderno de PulseAudio)
-echo "== Paso 8: Instalando PipeWire (audio moderno) =="
-pacman -S --noconfirm \
-    pipewire \
-    pipewire-alsa \
-    pipewire-pulse \
-    pipewire-jack \
-    wireplumber
+log_success "== Paso 8: Instalando PipeWire (audio moderno) =="
+pkgs=(
+  pipewire
+  pipewire-alsa
+  pipewire-pulse
+  pipewire-jack
+  wireplumber
+)
+pac_install "${pkgs[@]}"
 
 ### Paso 9: Instalar Hyprland
-echo "== Paso 9: Instalando Hyprland =="
-pacman -S --noconfirm hyprland
+log_success "== Paso 9: Instalando Hyprland =="
+pkgs=(
+  hyprland
+  hyprpaper
+  waybar
+  wezterm
+)
+pac_install "${pkgs[@]}"
 
 ### Paso 10: Crear configuración Hyprland optimizada para NVIDIA
-echo "== Paso 10: Configurando Hyprland (optimización NVIDIA) =="
+log_success "== Paso 10: Configurando Hyprland (optimización NVIDIA) =="
 CONFIG_DIR="$HOME/.config/hypr"
 mkdir -p "${CONFIG_DIR}"
-
-cat <<'EOF' > "${CONFIG_DIR}/hyprland.conf"
-### Hyprland configuración optimizada para NVIDIA ###
-
-# Variables de entorno para NVIDIA
-env = WLR_NO_HARDWARE_CURSORS,1
-env = GBM_BACKEND,nvidia-drm
-env = __GLX_VENDOR_LIBRARY_NAME,nvidia
-
-# Monitor (modo automático)
-monitor=,preferred,auto,1
-
-# Modificador principal
-$mod = SUPER
-
-# Aplicaciones
-bind = $mod, RETURN, exec, kitty
-bind = $mod SHIFT, Q, killactive
-bind = $mod SHIFT, R, reload
-bind = $mod, D, exec, fuzzel
-exec-once = waybar & hyprpaper & dunst
-
-# Decoración
-general {
-    gaps_in = 5
-    gaps_out = 15
-    border_size = 2
-    col.active_border = rgba(89b4faee)
-    col.inactive_border = rgba(585b70aa)
-}
-
-decoration {
-    blur = true
-    blur_size = 8
-    blur_passes = 3
-    blur_new_optimizations = true
-}
-
-animations {
-    enabled = true
-    bezier = easeOutQuint, 0.23, 1, 0.32, 1
-    animation = windows, 1, 6, easeOutQuint
-    animation = fade, 1, 4, easeOutQuint
-}
-
-input {
-    kb_layout = es
-    follow_mouse = 1
-    sensitivity = 0
-}
-EOF
 
 chown -R "$(id -u)":"$(id -g)" "${CONFIG_DIR}"
 
 ### Paso 11: Habilitar servicios
-echo "== Paso 11: Habilitando servicios necesarios =="
+log_success "== Paso 11: Habilitando servicios necesarios =="
 systemctl enable --now seatd.service
 
 # Activar audio (para el usuario actual)
@@ -150,8 +153,7 @@ systemctl --user enable --now pipewire pipewire-pulse wireplumber ||
 true
 
 ### Paso 12: Final
-echo "== Instalación completada =="
-echo "➡️  Revisa que tu bootloader no use 'nomodeset' o 'video='."
-echo "➡️  Añade 'nvidia-drm.modeset=1' a la línea de arranque si no lo
-has hecho."
-echo "➡️  Reinicia para aplicar cambios."
+log_success "== Instalación completada =="
+log_success "➡️  Revisa que tu bootloader no use 'nomodeset' o 'video='."
+log_success "➡️  Añade 'nvidia-drm.modeset=1' a la línea de arranque si no lo has hecho."
+log_success "➡️  Reinicia para aplicar cambios."
